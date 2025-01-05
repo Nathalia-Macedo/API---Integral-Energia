@@ -315,6 +315,45 @@ app.get('/users', async (req, res) => {
       res.status(500).header('Content-Type', 'application/json').json({ error: 'Erro ao buscar usuários' });
     }
   });
+
+
+  // Rota: Deletar Usuário
+/**
+ * @swagger
+ * /delete-user:
+ *   delete:
+ *     summary: Deletar um usuário
+ *     parameters:
+ *       - in: query
+ *         name: email
+ *         schema:
+ *           type: string
+ *         required: true
+ *         description: Email do usuário a ser deletado
+ *     responses:
+ *       200:
+ *         description: Usuário deletado com sucesso
+ *       404:
+ *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao deletar usuário
+ */
+app.delete('/delete-user', async (req, res) => {
+    const { email } = req.query;
+  
+    try {
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        return res.status(404).json({ error: 'Usuário não encontrado' });
+      }
+  
+      await prisma.user.delete({ where: { email } });
+      res.status(200).json({ message: 'Usuário deletado com sucesso' });
+    } catch (error) {
+      console.error('Erro ao deletar usuário:', error);
+      res.status(500).json({ error: 'Erro ao deletar usuário' });
+    }
+  });
   
 
 // Iniciar o servidor
