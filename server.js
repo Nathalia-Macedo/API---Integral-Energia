@@ -255,10 +255,16 @@ app.post('/reset-password', async (req, res) => {
   
       // Atualizar a senha e limpar o código de redefinição
       const hashedPassword = await bcrypt.hash(newPassword, 10);
+      console.log('Hash da nova senha:', hashedPassword);
+
       await prisma.user.update({
         where: { email },
-        data: { password: hashedPassword, resetCode: null },
+        data: {
+          password: hashedPassword,
+          resetCode: null,
+        },
       });
+      
   
       console.log('Senha redefinida com sucesso para:', email);
       res.status(200).json({ message: 'Senha redefinida com sucesso' });
