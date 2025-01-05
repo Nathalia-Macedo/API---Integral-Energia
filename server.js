@@ -198,7 +198,7 @@ app.post('/forgot-password', async (req, res) => {
       await transporter.sendMail({
         from: 'seuemail@gmail.com', // Substitua pelo seu e-mail
         to: email,
-        subject: 'Redefinição de senha',
+        subject: 'Redefinição de senha Integral Energia',
         text: `Seu código de redefinição de senha é: ${resetCode}`,
       });
   
@@ -244,7 +244,11 @@ app.post('/reset-password', async (req, res) => {
     const { email, resetCode, newPassword } = req.body;
   
     try {
+      console.log('Requisição recebida:', { email, resetCode, newPassword });
+  
       const user = await prisma.user.findUnique({ where: { email } });
+      console.log('Usuário encontrado:', user);
+  
       if (!user || user.resetCode !== resetCode) {
         return res.status(400).json({ error: 'Código inválido ou expirado' });
       }
@@ -256,12 +260,14 @@ app.post('/reset-password', async (req, res) => {
         data: { password: hashedPassword, resetCode: null },
       });
   
+      console.log('Senha redefinida com sucesso para:', email);
       res.status(200).json({ message: 'Senha redefinida com sucesso' });
     } catch (error) {
       console.error('Erro ao redefinir senha:', error);
       res.status(500).json({ error: 'Erro ao redefinir senha' });
     }
   });
+  
   
   
 
