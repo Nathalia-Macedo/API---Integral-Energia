@@ -12,5 +12,7 @@ model User {
   email      String   @unique
   password   String
   name       String
-  resetToken String?
+  resetToken String? // Para casos de JWT no futuro
+  resetCode  String? // Código de redefinição de senha
 }
+

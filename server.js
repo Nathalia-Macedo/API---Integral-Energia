@@ -3,6 +3,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
+const nodemailer = require('nodemailer');
 const cors = require('cors');
 const { PrismaClient } = require('@prisma/client');
 const swaggerUi = require('swagger-ui-express');
@@ -36,6 +37,17 @@ const swaggerOptions = {
 
 const swaggerDocs = swaggerJsDoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+
+
+// Configuração do serviço de e-mail
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // Ou outro serviço como Outlook, Yahoo
+    auth: {
+      user: 'nathaliademacedomartins04@gmail.com', // Substitua pelo seu e-mail
+      pass: '7335343707n', // Substitua pela senha do seu e-mail (ou App Password)
+    },
+  });
+
 
 // Definição do schema Prisma
 // Salve este schema no arquivo `prisma/schema.prisma`
@@ -87,6 +99,7 @@ app.post('/register', async (req, res) => {
   }
 });
 
+
 // Rota: Login de Usuário
 /**
  * @swagger
@@ -102,34 +115,49 @@ app.post('/register', async (req, res) => {
  *             properties:
  *               email:
  *                 type: string
+ *                 description: Email do usuário
  *               password:
  *                 type: string
+ *                 description: Senha do usuário
  *     responses:
  *       200:
  *         description: Login realizado com sucesso
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 token:
+ *                   type: string
+ *                   description: Token JWT gerado para autenticação
+ *                 name:
+ *                   type: string
+ *                   description: Nome do usuário logado
  *       401:
  *         description: Credenciais inválidas
  */
 app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-  try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(password, user.password))) {
-      return res.status(401).json({ error: 'Credenciais inválidas' });
+    const { email, password } = req.body;
+  
+    try {
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ error: 'Credenciais inválidas' });
+      }
+  
+      const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1h' });
+      res.status(200).json({ token, name: user.name });
+    } catch (error) {
+      res.status(500).json({ error: 'Algo deu errado' });
     }
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '1h' });
-    res.status(200).json({ token });
-  } catch (error) {
-    res.status(500).json({ error: 'Algo deu errado' });
-  }
-});
+  });
 
-// Rota: Esqueceu a Senha
+// Rota: Solicitar redefinição de senha
 /**
  * @swagger
  * /forgot-password:
  *   post:
- *     summary: Iniciar o processo de redefinição de senha
+ *     summary: Solicitar a redefinição de senha
  *     requestBody:
  *       required: true
  *       content:
@@ -139,28 +167,50 @@ app.post('/login', async (req, res) => {
  *             properties:
  *               email:
  *                 type: string
+ *                 description: Email do usuário para enviar o código de redefinição
  *     responses:
  *       200:
- *         description: Email para redefinição enviado
+ *         description: Código de redefinição enviado para o email
  *       404:
  *         description: Usuário não encontrado
+ *       500:
+ *         description: Erro ao solicitar redefinição de senha
  */
 app.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
-  try {
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) {
-      return res.status(404).json({ error: 'Usuário não encontrado' });
+    const { email } = req.body;
+  
+    try {
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user) {
+        return res.status(404).json({ error: 'Usuário não encontrado' });
+      }
+  
+      // Gerar um código de 6 dígitos aleatório
+      const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+  
+      // Atualizar o código no banco de dados
+      await prisma.user.update({
+        where: { email },
+        data: { resetCode },
+      });
+  
+      // Enviar o código para o e-mail do usuário
+      await transporter.sendMail({
+        from: 'seuemail@gmail.com', // Substitua pelo seu e-mail
+        to: email,
+        subject: 'Redefinição de senha',
+        text: `Seu código de redefinição de senha é: ${resetCode}`,
+      });
+  
+      res.status(200).json({ message: 'Código enviado para o e-mail' });
+    } catch (error) {
+      console.error('Erro ao enviar o e-mail:', error);
+      res.status(500).json({ error: 'Erro ao solicitar redefinição de senha' });
     }
-    const resetToken = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '15m' });
-    await prisma.user.update({ where: { email }, data: { resetToken } });
-    res.status(200).json({ message: 'Email para redefinição enviado', resetToken });
-  } catch (error) {
-    res.status(500).json({ error: 'Algo deu errado' });
-  }
-});
+  });
+  
 
-
+// Rota: Redefinir senha
 /**
  * @swagger
  * /reset-password:
@@ -173,30 +223,46 @@ app.post('/forgot-password', async (req, res) => {
  *           schema:
  *             type: object
  *             properties:
- *               resetToken:
+ *               email:
  *                 type: string
+ *                 description: Email do usuário
+ *               resetCode:
+ *                 type: string
+ *                 description: Código de 6 dígitos enviado por e-mail
  *               newPassword:
  *                 type: string
+ *                 description: Nova senha do usuário
  *     responses:
  *       200:
  *         description: Senha redefinida com sucesso
  *       400:
- *         description: Token inválido ou expirado
+ *         description: Código inválido ou expirado
+ *       500:
+ *         description: Erro ao redefinir senha
  */
 app.post('/reset-password', async (req, res) => {
-    const { resetToken, newPassword } = req.body;
+    const { email, resetCode, newPassword } = req.body;
+  
     try {
-      const decoded = jwt.verify(resetToken, JWT_SECRET);
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || user.resetCode !== resetCode) {
+        return res.status(400).json({ error: 'Código inválido ou expirado' });
+      }
+  
+      // Atualizar a senha e limpar o código de redefinição
       const hashedPassword = await bcrypt.hash(newPassword, 10);
       await prisma.user.update({
-        where: { id: decoded.userId },
-        data: { password: hashedPassword, resetToken: null },
+        where: { email },
+        data: { password: hashedPassword, resetCode: null },
       });
+  
       res.status(200).json({ message: 'Senha redefinida com sucesso' });
     } catch (error) {
-      res.status(400).json({ error: 'Token inválido ou expirado' });
+      console.error('Erro ao redefinir senha:', error);
+      res.status(500).json({ error: 'Erro ao redefinir senha' });
     }
   });
+  
   
 
 
